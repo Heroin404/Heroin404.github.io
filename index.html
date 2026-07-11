@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Random Masterworks — вертикальная лента шедевров</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#121016;
+    --bg-elev:#1a1620;
+    --cream:#f3ede0;
+    --muted:#a79f8f;
+    --gold:#c9a15c;
+    --gold-dim:#8a7245;
+    --like:#c14b3f;
+    --line: rgba(201,161,92,0.28);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:#000;overscroll-behavior:none;}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--cream);}
+
+  #feed{
+    height:100dvh;
+    width:100%;
+    overflow-y:scroll;
+    scroll-snap-type:y mandatory;
+    scrollbar-width:none;
+  }
+  #feed::-webkit-scrollbar{display:none;}
+
+  .slide{
+    position:relative;
+    height:100dvh;
+    width:100%;
+    scroll-snap-align:start;
+    scroll-snap-stop:always;
+    overflow:hidden;
+    background:var(--bg);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .art-frame{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--bg);
+  }
+  .art-frame::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:inherit;
+    background-size:cover;
+    background-position:center;
+    filter:blur(38px) brightness(0.4) saturate(1.1);
+    transform:scale(1.15);
+  }
+  .art-img{
+    position:relative;
+    max-width:100%;
+    max-height:100%;
+    object-fit:contain;
+    box-shadow:0 30px 90px rgba(0,0,0,0.55);
+    opacity:0;
+    transition:opacity .5s ease;
+  }
+  .art-img.loaded{opacity:1;}
+
+  .img-loader{
+    position:absolute; inset:0; z-index:1;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity .3s ease;
+    pointer-events:none;
+  }
+  .img-loader.hidden{ opacity:0; }
+
+  .scrim-top{
+    position:absolute; top:0; left:0; right:0; height:22%;
+    background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0));
+    pointer-events:none; z-index:2;
+  }
+  .scrim-bottom{
+    position:absolute; bottom:0; left:0; right:0; height:46%;
+    background:linear-gradient(0deg, rgba(0,0,0,0.72), rgba(0,0,0,0));
+    pointer-events:none; z-index:2;
+  }
+
+  .eyebrow{
+    position:absolute; top:18px; left:20px; z-index:3;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--gold);
+  }
+  .counter{
+    position:absolute; top:18px; right:20px; z-index:3;
+    text-align:right;
+  }
+  .counter-num{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.1em;
+    color:var(--muted);
+    display:block;
+  }
+  .museum-tag{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px; letter-spacing:.08em;
+    color:var(--gold-dim);
+    display:block; margin-top:2px;
+  }
+
+  .plaque{
+    position:absolute; left:20px; right:88px; bottom:28px; z-index:3;
+    max-width:520px;
+  }
+  .plaque-rule{
+    width:38px; height:1px; background:var(--gold); margin-bottom:12px;
+  }
+  .plaque-title{
+    font-family:'Fraunces',serif;
+    font-weight:500; font-size:22px; line-height:1.25;
+    margin:0 0 6px 0; color:var(--cream);
+    transition:opacity .25s ease;
+  }
+  .plaque-artist{
+    font-size:14px; color:var(--gold); margin:0 0 4px 0; font-weight:500;
+    transition:opacity .25s ease;
+  }
+  .plaque-meta{
+    font-size:12.5px; color:var(--muted); margin:0; line-height:1.5;
+    transition:opacity .25s ease;
+  }
+  .plaque-extra{
+    max-height:0; overflow:hidden; opacity:0;
+    transition:max-height .35s ease, opacity .35s ease, margin-top .35s ease;
+  }
+  .plaque-extra.open{
+    max-height:140px; opacity:1; margin-top:10px;
+  }
+  .plaque-acc{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--gold-dim);
+    letter-spacing:.05em;
+  }
+  .plaque-medium{
+    font-size:12.5px; color:var(--muted); margin-top:6px; font-style:italic;
+    font-family:'Fraunces',serif;
+    transition:opacity .25s ease;
+  }
+  .fade-swap{ opacity:0.35; }
+
+  .rail{
+    position:absolute; right:14px; bottom:104px; z-index:3;
+    display:flex; flex-direction:column; align-items:center; gap:20px;
+  }
+  .rail-btn{
+    background:none; border:none; color:var(--cream); cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    font-family:'Inter',sans-serif; font-size:10.5px; color:var(--muted);
+    padding:0; width:46px;
+  }
+  .rail-btn svg{width:26px; height:26px; display:block; margin:0 auto;}
+  .rail-btn.like.active svg{ fill:var(--like); stroke:var(--like); }
+  .rail-btn.info.active{ color:var(--gold); }
+  .rail-circle{
+    width:46px; height:46px; border-radius:50%;
+    border:1px solid rgba(243,237,224,0.28);
+    display:flex; align-items:center; justify-content:center;
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  .rail-btn:active .rail-circle{ transform:scale(0.88); }
+  .rail-btn.info.active .rail-circle{ border-color:var(--gold); }
+
+  .heart-burst{
+    position:absolute; z-index:5; pointer-events:none;
+    width:110px; height:110px;
+    left:50%; top:50%; transform:translate(-50%,-50%) scale(0.3);
+    opacity:0;
+  }
+  .heart-burst.play{
+    animation:burst .8s cubic-bezier(.2,.8,.3,1) forwards;
+  }
+  @keyframes burst{
+    0%{ transform:translate(-50%,-50%) scale(0.3); opacity:0; }
+    18%{ transform:translate(-50%,-50%) scale(1.05); opacity:0.95; }
+    35%{ transform:translate(-50%,-50%) scale(0.95); opacity:0.95; }
+    100%{ transform:translate(-50%,-50%) scale(1); opacity:0; }
+  }
+
+  .loader-slide{
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg); cursor:pointer;
+  }
+  .loader-inner{
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+    color:var(--muted); font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    opacity:0.55; transition:opacity .3s ease;
+  }
+  .loader-slide.active .loader-inner{ opacity:1; }
+  .spinner.big{ width:30px; height:30px; border-width:2.5px; }
+
+  .status{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:14px; color:var(--muted); font-size:13px;
+    text-align:center; padding:0 40px;
+  }
+  .spinner{
+    width:22px; height:22px; border-radius:50%;
+    border:2px solid rgba(201,161,92,0.25); border-top-color:var(--gold);
+    animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .retry-btn{
+    margin-top:6px; background:none; border:1px solid var(--gold-dim);
+    color:var(--gold); font-family:'Inter',sans-serif; font-size:12.5px;
+    padding:8px 18px; border-radius:2px; cursor:pointer; letter-spacing:.03em;
+  }
+  .retry-btn:hover{ border-color:var(--gold); }
+
+  #boot{
+    position:fixed; inset:0; background:var(--bg); z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  #boot .mark{
+    font-family:'Fraunces',serif; font-weight:300; font-size:26px; color:var(--cream);
+    letter-spacing:.02em;
+  }
+  #boot .sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--gold); letter-spacing:.16em; text-transform:uppercase; }
+
+  #hint{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    z-index:20; font-family:'IBM Plex Mono',monospace; font-size:10.5px;
+    color:var(--muted); letter-spacing:.08em; text-transform:uppercase;
+    display:flex; align-items:center; gap:8px; opacity:0.85;
+    animation:float 2.2s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes float{ 0%,100%{ transform:translate(-50%,0);} 50%{ transform:translate(-50%,-6px);} }
+
+  #settings-gear{
+    position:fixed; right:16px; bottom:18px; z-index:30;
+    width:44px; height:44px; border-radius:50%;
+    background:rgba(18,16,22,0.65);
+    border:1px solid rgba(201,161,92,0.4);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:var(--gold);
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  #settings-gear:hover{ border-color:var(--gold); }
+  #settings-gear:active{ transform:scale(0.9); }
+  #settings-gear svg{ width:22px; height:22px; }
+  #settings-gear.spin svg{ animation:gearspin .6s ease; }
+  @keyframes gearspin{ to{ transform:rotate(75deg); } }
+
+  #settings-panel{
+    position:fixed; right:16px; bottom:70px; z-index:31;
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:14px;
+    min-width:230px;
+    box-shadow:0 12px 32px rgba(0,0,0,0.5);
+    display:none;
+    flex-direction:column;
+    gap:10px;
+  }
+  #settings-panel.open{ display:flex; }
+  #settings-panel .panel-title{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--muted); margin:8px 0 2px 0;
+  }
+  #settings-panel .panel-title:first-child{ margin-top:0; }
+  .lang-option{
+    display:flex; align-items:center; justify-content:space-between;
+    background:none; border:1px solid rgba(243,237,224,0.15);
+    color:var(--cream); font-family:'Inter',sans-serif; font-size:13px;
+    padding:9px 12px; border-radius:6px; cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .lang-option:hover{ border-color:var(--gold-dim); }
+  .lang-option.active{
+    border-color:var(--gold); background:rgba(201,161,92,0.1); color:var(--gold);
+  }
+  .lang-option .dot{
+    width:7px; height:7px; border-radius:50%; background:var(--gold);
+    opacity:0; transition:opacity .15s ease;
+  }
+  .lang-option.active .dot{ opacity:1; }
+  .panel-note{
+    font-size:10.5px; color:var(--muted); line-height:1.5; margin-top:2px;
+  }
+  .source-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:10px; font-size:12px; color:var(--cream); line-height:1.3;
+  }
+  .switch{
+    width:34px; height:19px; border-radius:20px; border:1px solid rgba(243,237,224,0.25);
+    background:rgba(255,255,255,0.06); position:relative; cursor:pointer; flex:none;
+  }
+  .switch .knob{
+    width:13px; height:13px; border-radius:50%; background:var(--muted);
+    position:absolute; top:2px; left:2px; transition:left .15s ease, background .15s ease;
+  }
+  .switch.on{ border-color:var(--gold); }
+  .switch.on .knob{ left:17px; background:var(--gold); }
+
+  @media (max-width:640px){
+    .plaque{ right:76px; }
+    .plaque-title{ font-size:19px; }
+    .rail{ right:10px; gap:16px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div class="mark">Random Masterworks</div>
+  <div class="sub" id="boot-sub">собираем ленту</div>
+  <div class="spinner"></div>
+</div>
+
+<div id="feed"></div>
+<div id="hint">↑ ↓ листайте, как ленту ↑ ↓</div>
+
+<div id="settings-gear" aria-label="Настройки">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+    <circle cx="12" cy="12" r="3.2"/>
+    <path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2.06 2.06 0 1 1-2.92 2.92l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56v.17a2.06 2.06 0 1 1-4.12 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2.06 2.06 0 1 1-2.92-2.92l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H4.6a2.06 2.06 0 1 1 0-4.12h.09A1.7 1.7 0 0 0 6.25 7.3a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2.06 2.06 0 1 1 2.92-2.92l.06.06a1.7 1.7 0 0 0 1.87.34H10.8a1.7 1.7 0 0 0 1.03-1.56V1.1a2.06 2.06 0 1 1 4.12 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2.06 2.06 0 1 1 2.92 2.92l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03h.17a2.06 2.06 0 1 1 0 4.12h-.09a1.7 1.7 0 0 0-1.56 1.03z"/>
+  </svg>
+</div>
+
+<div id="settings-panel">
+  <p class="panel-title" id="panel-title-lang">Language</p>
+  <button class="lang-option" data-lang="ru"><span>Русский</span><span class="dot"></span></button>
+  <button class="lang-option" data-lang="en"><span>English</span><span class="dot"></span></button>
+  <p class="panel-note" id="panel-note">Artwork text is translated automatically.</p>
+
+  <p class="panel-title" id="panel-title-src">Sources</p>
+  <div class="source-row">
+    <span id="src-met-label">The Metropolitan Museum of Art</span>
+    <div class="switch on" data-source="met"><div class="knob"></div></div>
+  </div>
+  <div class="source-row">
+    <span id="src-cleveland-label">Cleveland Museum of Art</span>
+    <div class="switch on" data-source="cleveland"><div class="knob"></div></div>
+  </div>
+  <div class="source-row">
+    <span id="src-va-label">Victoria and Albert Museum</span>
+    <div class="switch on" data-source="va"><div class="knob"></div></div>
+  </div>
+  <div class="source-row">
+    <span id="src-harvard-label">Harvard Art Museums</span>
+    <div class="switch on" data-source="harvard"><div class="knob"></div></div>
+  </div>
+</div>
+
+<template id="slide-tpl">
+  <section class="slide">
+    <div class="art-frame">
+      <img class="art-img" alt="">
+      <div class="img-loader">
+        <div class="spinner"></div>
+      </div>
+    </div>
+    <div class="scrim-top"></div>
+    <div class="scrim-bottom"></div>
+    <div class="eyebrow">Random Masterworks</div>
+    <div class="counter">
+      <span class="counter-num"></span>
+      <span class="museum-tag"></span>
+    </div>
+
+    <div class="plaque">
+      <div class="plaque-rule"></div>
+      <p class="plaque-title"></p>
+      <p class="plaque-artist"></p>
+      <p class="plaque-meta"></p>
+      <div class="plaque-extra">
+        <div class="plaque-medium"></div>
+        <div class="plaque-acc"></div>
+      </div>
+    </div>
+
+    <div class="rail">
+      <button class="rail-btn like" aria-label="Like">
+        <span class="rail-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.1 2.3 4.5 6 4c2.1-.3 3.9.8 6 3 2.1-2.2 3.9-3.3 6-3 3.7.5 5.5 4.1 4 7.7C19.5 16.4 12 21 12 21z"/></svg>
+        </span>
+        <span class="like-count">0</span>
+      </button>
+      <button class="rail-btn info" aria-label="Info">
+        <span class="rail-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.6" r="0.9" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span class="lbl-info">детали</span>
+      </button>
+      <button class="rail-btn download" aria-label="Download">
+        <span class="rail-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 19h16"/></svg>
+        </span>
+        <span class="lbl-download">скачать</span>
+      </button>
+      <a class="rail-btn source" target="_blank" rel="noopener" aria-label="Source">
+        <span class="rail-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>
+        </span>
+        <span class="lbl-source">музей</span>
+      </a>
+    </div>
+
+    <div class="heart-burst">
+      <svg viewBox="0 0 24 24" fill="var(--like)"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.1 2.3 4.5 6 4c2.1-.3 3.9.8 6 3 2.1-2.2 3.9-3.3 6-3 3.7.5 5.5 4.1 4 7.7C19.5 16.4 12 21 12 21z"/></svg>
+    </div>
+  </section>
+</template>
+
+<script>
+(function(){
+  const feed = document.getElementById('feed');
+  const boot = document.getElementById('boot');
+  const hint = document.getElementById('hint');
+  const tpl = document.getElementById('slide-tpl');
+  const gear = document.getElementById('settings-gear');
+  const panel = document.getElementById('settings-panel');
+
+  let lang = 'en';
+  const sources = { met: true, cleveland: true, va: true, harvard: true };
+  let loading = false;
+  let observer;
+  let hintShown = false;
+  const translationCache = {};
+
+  const STRINGS = {
+    ru: {
+      eyebrow: 'Random Masterworks by Popov Oleg',
+      hint: '↑ ↓ листайте, как ленту ↑ ↓',
+      info: 'детали',
+      download: 'скачать',
+      downloading: 'сохраняю…',
+      source: 'музей',
+      bootSub: 'собираем ленту',
+      errorMsg: 'Не удалось загрузить картины.<br>Проверьте подключение к интернету.',
+      retry: 'Повторить',
+      panelTitleLang: 'Язык',
+      panelNote: 'Тексты картин переводятся автоматически.',
+      panelTitleSrc: 'Источники',
+      srcMet: 'Метрополитен-музей',
+      srcCleveland: 'Музей искусств Кливленда',
+      srcVa: 'Музей Виктории и Альберта',
+      srcHarvard: 'Художественные музеи Гарварда',
+      untitled: 'Без названия',
+      unknownArtist: 'Автор неизвестен',
+      mediumFallback: 'Материал не указан',
+      invLabel: 'инв.',
+      settingsAria: 'Настройки',
+      loadingNext: 'следующая картина…',
+      loadMoreFailed: 'не удалось загрузить · нажмите, чтобы повторить'
+    },
+    en: {
+      eyebrow: 'Random Masterworks by Popov Oleg',
+      hint: '↑ ↓ swipe like a feed ↑ ↓',
+      info: 'details',
+      download: 'save',
+      downloading: 'saving…',
+      source: 'museum',
+      bootSub: 'building your feed',
+      errorMsg: "Couldn't load paintings.<br>Check your internet connection.",
+      retry: 'Retry',
+      panelTitleLang: 'Language',
+      panelNote: 'Artwork text is translated automatically.',
+      panelTitleSrc: 'Sources',
+      srcMet: 'The Metropolitan Museum of Art',
+      srcCleveland: 'Cleveland Museum of Art',
+      srcVa: 'Victoria and Albert Museum',
+      srcHarvard: 'Harvard Art Museums',
+      untitled: 'Untitled',
+      unknownArtist: 'Unknown artist',
+      mediumFallback: 'Medium not specified',
+      invLabel: 'inv.',
+      settingsAria: 'Settings',
+      loadingNext: 'loading next artwork…',
+      loadMoreFailed: "couldn't load · tap to retry"
+    }
+  };
+
+
+  function t(key){ return STRINGS[lang][key]; }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function stripHtml(html){
+    const div = document.createElement('div');
+    div.innerHTML = html || '';
+    return (div.textContent || div.innerText || '').trim();
+  }
+
+  async function fetchWithTimeout(url, opts, timeoutMs){
+    timeoutMs = timeoutMs || 8000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try{
+      return await fetch(url, Object.assign({}, opts, { signal: controller.signal }));
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  // Translation requests are throttled to a small number running at once —
+  // firing dozens of parallel requests at the free translation API tends to
+  // make all of them stall together.
+  const MAX_CONCURRENT_TRANSLATIONS = 3;
+  let activeTranslations = 0;
+  const translationQueue = [];
+
+  function withTranslationSlot(fn){
+    return new Promise((resolve) => {
+      const run = () => {
+        activeTranslations++;
+        fn().finally(() => {
+          activeTranslations--;
+          if(translationQueue.length){
+            translationQueue.shift()();
+          }
+        }).then(resolve, resolve);
+      };
+      if(activeTranslations < MAX_CONCURRENT_TRANSLATIONS) run();
+      else translationQueue.push(run);
+    });
+  }
+
+  // googletrans (the Python package) is just a thin wrapper around Google
+  // Translate's public web-widget endpoint — it can't run in a browser itself
+  // (no Python runtime here), but the same underlying endpoint is a plain
+  // GET that returns JSON, so we call it directly instead.
+  async function translateText(text, srcLang, targetLang){
+    if(!text) return text;
+    const key = srcLang + '>' + targetLang + '::' + text;
+    if(translationCache[key]) return translationCache[key];
+    return withTranslationSlot(async () => {
+      try{
+        const url = 'https://translate.googleapis.com/translate_a/single'
+          + '?client=gtx&dt=t&sl=' + srcLang + '&tl=' + targetLang
+          + '&q=' + encodeURIComponent(text);
+        const res = await fetchWithTimeout(url, {}, 7000);
+        const data = await res.json();
+        const translated = Array.isArray(data) && Array.isArray(data[0])
+          ? data[0].map(seg => seg[0]).join('')
+          : text;
+        translationCache[key] = translated;
+        return translated;
+      }catch(e){
+        return text;
+      }
+    });
+  }
+
+  async function fetchMet(count){
+    const results = [];
+    let guard = 0;
+    while(results.length < count && guard < 40){
+      guard++;
+      const batchIds = Array.from({ length: 8 }, () => Math.floor(Math.random() * 850000) + 1);
+      const fetches = batchIds.map(id =>
+        fetchWithTimeout('https://collectionapi.metmuseum.org/public/collection/v1/objects/' + id, {}, 6000)
+          .then(res => res.ok ? res.json() : null)
+          .catch(() => null)
+      );
+      const objs = await Promise.all(fetches);
+      for(const o of objs){
+        if(results.length >= count) break;
+        if(!o || !o.isPublicDomain) continue;
+        const full = o.primaryImage;
+        const small = o.primaryImageSmall;
+        if(!full && !small) continue;
+        results.push({
+          id: o.objectID,
+          title: o.title || null,
+          artist: o.artistDisplayName || null,
+          date: o.objectDate || '',
+          medium: o.medium || null,
+          img: full || small,
+          imgPreview: small || full,
+          source: o.objectURL || ('https://www.metmuseum.org/art/collection/search/' + o.objectID),
+          museum: 'The Met',
+          srcLang: 'en'
+        });
+      }
+    }
+    return results;
+  }
+
+  async function fetchCleveland(count){
+    const results = [];
+    let attempts = 0;
+    while(results.length < count && attempts < 8){
+      attempts++;
+      const skip = Math.floor(Math.random() * 30000);
+      const url = 'https://openaccess-api.clevelandart.org/api/artworks/'
+        + '?limit=20&cc0=1&has_image=1&skip=' + skip;
+      try{
+        const res = await fetchWithTimeout(url, {}, 7000);
+        if(!res.ok) continue;
+        const data = await res.json();
+        const items = shuffle((data.data || []).filter(a => a.images && (a.images.web || a.images.print)));
+        for(const a of items){
+          if(results.length >= count) break;
+          const web = a.images.web && a.images.web.url;
+          const print = a.images.print && a.images.print.url;
+          results.push({
+            id: a.id,
+            title: a.title || null,
+            artist: (a.creators && a.creators[0] && a.creators[0].description) || null,
+            date: a.creation_date || '',
+            medium: a.technique || null,
+            img: print || web,
+            imgPreview: web || print,
+            source: a.url || ('https://clevelandart.org/art/' + a.accession_number),
+            museum: 'Cleveland',
+            srcLang: 'en'
+          });
+        }
+      }catch(e){
+        console.error('Cleveland fetch error', e);
+      }
+    }
+    return results;
+  }
+
+  async function fetchVA(count){
+    const results = [];
+    let attempts = 0;
+    while(results.length < count && attempts < 8){
+      attempts++;
+      const page = Math.floor(Math.random() * 50) + 1;
+      const url = 'https://api.vam.ac.uk/v2/objects/search'
+        + '?q_object_type=painting&images_exist=1&page_size=20&page=' + page;
+      try{
+        const res = await fetchWithTimeout(url, {}, 7000);
+        if(!res.ok) continue;
+        const data = await res.json();
+        const items = shuffle((data.records || []).filter(r => r._primaryImageId));
+        for(const r of items){
+          if(results.length >= count) break;
+          const imgId = r._primaryImageId;
+          results.push({
+            id: r.systemNumber,
+            title: r._primaryTitle || null,
+            artist: (r._primaryMaker && r._primaryMaker.name) || null,
+            date: r._primaryDate || '',
+            medium: r.objectType || null,
+            img: 'https://framemark.vam.ac.uk/collections/' + imgId + '/full/!1200,1200/0/default.jpg',
+            imgPreview: 'https://framemark.vam.ac.uk/collections/' + imgId + '/full/!400,400/0/default.jpg',
+            source: 'https://collections.vam.ac.uk/item/' + r.systemNumber,
+            museum: 'V&A',
+            srcLang: 'en'
+          });
+        }
+      }catch(e){
+        console.error('V&A fetch error', e);
+      }
+    }
+    return results;
+  }
+
+  // Personal API key — visible in client-side source, subject to Harvard's
+  // 2500 requests/day limit and non-commercial use terms.
+  const HARVARD_API_KEY = '05788812-7eba-4aef-8349-d813525d21fe';
+
+  async function fetchHarvard(count){
+    const results = [];
+    let attempts = 0;
+    while(results.length < count && attempts < 8){
+      attempts++;
+      const page = Math.floor(Math.random() * 300) + 1;
+      const url = 'https://api.harvardartmuseums.org/object'
+        + '?apikey=' + HARVARD_API_KEY
+        + '&size=20&page=' + page
+        + '&hasimage=1&classification=Paintings';
+      try{
+        const res = await fetchWithTimeout(url, {}, 7000);
+        if(!res.ok) continue;
+        const data = await res.json();
+        const items = shuffle((data.records || []).filter(r => r.primaryimageurl));
+        for(const r of items){
+          if(results.length >= count) break;
+          results.push({
+            id: r.objectid,
+            title: r.title || null,
+            artist: (r.people && r.people[0] && r.people[0].name) || null,
+            date: r.dated || '',
+            medium: r.medium || null,
+            img: r.primaryimageurl,
+            imgPreview: r.primaryimageurl + '?width=500',
+            source: r.url || ('https://harvardartmuseums.org/collections/object/' + r.objectid),
+            museum: 'Harvard',
+            srcLang: 'en'
+          });
+        }
+      }catch(e){
+        console.error('Harvard fetch error', e);
+      }
+    }
+    return results;
+  }
+
+  async function fetchBatch(count){
+    const activeKeys = [];
+    if(sources.met) activeKeys.push('met');
+    if(sources.cleveland) activeKeys.push('cleveland');
+    if(sources.va) activeKeys.push('va');
+    if(sources.harvard) activeKeys.push('harvard');
+    if(activeKeys.length === 0) return [];
+
+    const per = Math.ceil(count / activeKeys.length);
+    const fetchers = {
+      met: () => fetchMet(per),
+      cleveland: () => fetchCleveland(per),
+      va: () => fetchVA(per),
+      harvard: () => fetchHarvard(per)
+    };
+    const settled = await Promise.all(activeKeys.map(k => fetchers[k]()));
+    return shuffle(settled.flat()).slice(0, count);
+  }
+
+  async function applySlideLanguage(node, animate){
+    const titleEl = node.querySelector('.plaque-title');
+    const artistEl = node.querySelector('.plaque-artist');
+    const mediumEl = node.querySelector('.plaque-medium');
+    const metaEl = node.querySelector('.plaque-meta');
+    const srcLang = node.dataset.srcLang || 'en';
+
+    const origTitle = node.dataset.title || t('untitled');
+    const origArtist = node.dataset.artist || t('unknownArtist');
+    const origMedium = node.dataset.medium || t('mediumFallback');
+    const origDate = node.dataset.date || '';
+
+    node.querySelector('.eyebrow').textContent = t('eyebrow');
+    node.querySelector('.lbl-info').textContent = t('info');
+    const dlLbl = node.querySelector('.lbl-download');
+    if(dlLbl && !dlLbl.dataset.busy) dlLbl.textContent = t('download');
+    node.querySelector('.lbl-source').textContent = t('source');
+    node.querySelector('.plaque-acc').textContent = node.dataset.museum + ' · ' + t('invLabel') + ' ' + node.dataset.id;
+
+    if(animate){
+      [titleEl, artistEl, mediumEl, metaEl].forEach(el => el.classList.add('fade-swap'));
+    }
+
+    if(lang === srcLang){
+      titleEl.textContent = origTitle;
+      artistEl.textContent = origArtist;
+      mediumEl.textContent = origMedium;
+      metaEl.textContent = origDate;
+      [titleEl, artistEl, mediumEl, metaEl].forEach(el => el.classList.remove('fade-swap'));
+      return;
+    }
+
+    const cKey = t => translationCache[srcLang + '>' + lang + '::' + t];
+    titleEl.textContent = cKey(origTitle) || origTitle;
+    artistEl.textContent = cKey(origArtist) || origArtist;
+    mediumEl.textContent = cKey(origMedium) || origMedium;
+    metaEl.textContent = cKey(origDate) || origDate;
+    [titleEl, artistEl, mediumEl, metaEl].forEach(el => el.classList.remove('fade-swap'));
+
+    const requestLang = lang;
+    const [tt, ta, tm, td] = await Promise.all([
+      translateText(origTitle, srcLang, lang),
+      translateText(origArtist, srcLang, lang),
+      translateText(origMedium, srcLang, lang),
+      origDate ? translateText(origDate, srcLang, lang) : Promise.resolve('')
+    ]);
+    if(lang === requestLang){
+      titleEl.textContent = tt;
+      artistEl.textContent = ta;
+      mediumEl.textContent = tm;
+      metaEl.textContent = td;
+    }
+  }
+
+  function buildSlide(item, index){
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    const frame = node.querySelector('.art-frame');
+    const img = node.querySelector('.art-img');
+    const imgLoader = node.querySelector('.img-loader');
+    img.alt = (item.title || 'artwork') + ' — ' + (item.artist || '');
+
+    const previewUrl = item.imgPreview || item.img;
+
+    // Show the small preview immediately for a fast first paint, then
+    // swap in the full-resolution image once it has loaded in the background.
+    img.addEventListener('load', () => {
+      img.classList.add('loaded');
+      if(imgLoader) imgLoader.classList.add('hidden');
+      frame.style.setProperty('background-image', 'url(' + img.src + ')');
+    });
+    img.addEventListener('error', () => {
+      if(imgLoader) imgLoader.classList.add('hidden');
+    });
+
+    img.src = previewUrl;
+    frame.style.setProperty('background-image', 'url(' + previewUrl + ')');
+
+    if(item.img && item.img !== previewUrl){
+      const fullImg = new Image();
+      fullImg.onload = () => {
+        img.src = item.img;
+      };
+      fullImg.src = item.img;
+    }
+
+    node.dataset.id = item.id;
+    node.dataset.title = item.title || '';
+    node.dataset.artist = item.artist || '';
+    node.dataset.medium = item.medium || '';
+    node.dataset.date = item.date || '';
+    node.dataset.museum = item.museum;
+    node.dataset.srcLang = item.srcLang;
+
+    node.querySelector('.counter-num').textContent = String(index + 1).padStart(2,'0');
+    node.querySelector('.museum-tag').textContent = item.museum;
+    node.querySelector('.source').href = item.source;
+
+    applySlideLanguage(node, false);
+
+    const likeBtn = node.querySelector('.like');
+    const likeCount = node.querySelector('.like-count');
+    const heartBurst = node.querySelector('.heart-burst');
+    let liked = false;
+    let baseLikes = 40 + (Number(item.id) % 900 || 0);
+    likeCount.textContent = baseLikes;
+
+    function doLike(showBurst){
+      liked = !liked;
+      likeBtn.classList.toggle('active', liked);
+      likeCount.textContent = liked ? baseLikes + 1 : baseLikes;
+      if(liked && showBurst){
+        heartBurst.classList.remove('play');
+        void heartBurst.offsetWidth;
+        heartBurst.classList.add('play');
+      }
+    }
+    likeBtn.addEventListener('click', () => doLike(true));
+
+    let lastTap = 0;
+    node.querySelector('.art-frame').addEventListener('click', () => {
+      const now = Date.now();
+      if(now - lastTap < 320){
+        if(!liked) doLike(true);
+        else{
+          heartBurst.classList.remove('play');
+          void heartBurst.offsetWidth;
+          heartBurst.classList.add('play');
+        }
+      }
+      lastTap = now;
+    });
+
+    const infoBtn = node.querySelector('.info');
+    const extra = node.querySelector('.plaque-extra');
+    infoBtn.addEventListener('click', () => {
+      const open = extra.classList.toggle('open');
+      infoBtn.classList.toggle('active', open);
+    });
+
+    const downloadBtn = node.querySelector('.download');
+    const downloadLbl = node.querySelector('.lbl-download');
+    downloadBtn.addEventListener('click', async () => {
+      if(downloadBtn.disabled) return;
+      downloadBtn.disabled = true;
+      downloadLbl.dataset.busy = '1';
+      downloadLbl.textContent = t('downloading');
+      try{
+        const res = await fetchWithTimeout(item.img, { mode: 'cors' }, 15000);
+        if(!res.ok) throw new Error('bad response');
+        const blob = await res.blob();
+        const ext = (blob.type && blob.type.split('/')[1]) || 'jpg';
+        const base = (item.title || 'artwork')
+          .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9\s-]/g, '')
+          .trim().replace(/\s+/g, '-').slice(0, 60) || 'artwork';
+        const filename = base + '-' + item.museum.replace(/\s+/g, '') + '-' + item.id + '.' + ext;
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+      }catch(e){
+        console.error('download failed, opening image in new tab instead', e);
+        window.open(item.img, '_blank');
+      }finally{
+        downloadBtn.disabled = false;
+        delete downloadLbl.dataset.busy;
+        downloadLbl.textContent = t('download');
+      }
+    });
+
+    return node;
+  }
+
+  let loaderNode = null;
+
+  function buildLoaderSlide(){
+    const el = document.createElement('section');
+    el.className = 'slide loader-slide';
+    el.innerHTML =
+      '<div class="loader-inner">' +
+        '<div class="spinner big"></div>' +
+        '<p class="loader-text"></p>' +
+      '</div>';
+    el.addEventListener('click', () => {
+      if(!loading) loadMore(4);
+    });
+    return el;
+  }
+
+  function setLoaderText(key){
+    if(!loaderNode) return;
+    loaderNode.querySelector('.loader-text').textContent = t(key);
+  }
+
+  function attachObserver(node){
+    observer.observe(node);
+  }
+
+  async function loadMore(count){
+    if(loading) return 0;
+    loading = true;
+    if(loaderNode) loaderNode.classList.add('active');
+    setLoaderText('loadingNext');
+    const items = await fetchBatch(count);
+    const startIndex = feed.children.length - (loaderNode ? 1 : 0);
+    items.forEach((item, i) => {
+      const node = buildSlide(item, startIndex + i);
+      if(loaderNode && loaderNode.parentNode === feed){
+        feed.insertBefore(node, loaderNode);
+      }else{
+        feed.appendChild(node);
+      }
+      attachObserver(node);
+    });
+    loading = false;
+    if(loaderNode){
+      loaderNode.classList.remove('active');
+      setLoaderText(items.length === 0 ? 'loadMoreFailed' : 'loadingNext');
+    }
+    return items.length;
+  }
+
+  function setupObserver(){
+    observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if(entry.isIntersecting){
+          const idx = Array.from(feed.children).indexOf(entry.target);
+          if(idx >= feed.children.length - 2){
+            loadMore(4);
+          }
+          if(!hintShown){
+            hintShown = true;
+            hint.style.transition = 'opacity .6s ease';
+            hint.style.opacity = '0';
+            setTimeout(() => hint.remove(), 700);
+          }
+        }
+      });
+    }, { root: feed, threshold: 0.6 });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      const h = feed.clientHeight;
+      feed.scrollBy({ top: e.key === 'ArrowDown' ? h : -h, behavior:'smooth' });
+    }
+  });
+
+  function applyGlobalStrings(){
+    if(hint && hint.parentNode) hint.textContent = t('hint');
+    const bootSub = document.getElementById('boot-sub');
+    if(bootSub) bootSub.textContent = t('bootSub');
+    document.getElementById('panel-title-lang').textContent = t('panelTitleLang');
+    document.getElementById('panel-note').textContent = t('panelNote');
+    document.getElementById('panel-title-src').textContent = t('panelTitleSrc');
+    document.getElementById('src-met-label').textContent = t('srcMet');
+    document.getElementById('src-cleveland-label').textContent = t('srcCleveland');
+    document.getElementById('src-va-label').textContent = t('srcVa');
+    document.getElementById('src-harvard-label').textContent = t('srcHarvard');
+    if(loaderNode) setLoaderText('loadingNext');
+    gear.setAttribute('aria-label', t('settingsAria'));
+    document.querySelectorAll('.lang-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+    const status = document.querySelector('.status');
+    if(status){
+      status.innerHTML = '<div>' + t('errorMsg') + '</div><button class="retry-btn" onclick="location.reload()">' + t('retry') + '</button>';
+    }
+  }
+
+  function setLanguage(newLang){
+    if(newLang === lang) return;
+    lang = newLang;
+    applyGlobalStrings();
+    Array.from(feed.children).forEach(node => applySlideLanguage(node, true));
+  }
+
+  gear.addEventListener('click', () => {
+    panel.classList.toggle('open');
+    gear.classList.remove('spin');
+    void gear.offsetWidth;
+    gear.classList.add('spin');
+  });
+
+  document.addEventListener('click', (e) => {
+    if(!panel.contains(e.target) && e.target !== gear && !gear.contains(e.target)){
+      panel.classList.remove('open');
+    }
+  });
+
+  document.querySelectorAll('.lang-option').forEach(btn => {
+    btn.addEventListener('click', () => setLanguage(btn.dataset.lang));
+  });
+
+  document.querySelectorAll('.switch[data-source]').forEach(sw => {
+    sw.addEventListener('click', () => {
+      const key = sw.dataset.source;
+      const activeCount = Object.values(sources).filter(Boolean).length;
+      if(sources[key] && activeCount <= 1) return; // keep at least one source on
+      sources[key] = !sources[key];
+      sw.classList.toggle('on', sources[key]);
+    });
+  });
+
+  async function boot_init(){
+    applyGlobalStrings();
+    setupObserver();
+    loaderNode = buildLoaderSlide();
+    feed.appendChild(loaderNode);
+    setLoaderText('loadingNext');
+    attachObserver(loaderNode);
+    const first = await loadMore(6);
+    boot.style.transition = 'opacity .5s ease';
+    boot.style.opacity = '0';
+    setTimeout(() => boot.remove(), 550);
+    if(!first){
+      setLoaderText('loadMoreFailed');
+    }
+  }
+
+  boot_init();
+})();
+</script>
+</body>
+</html>
