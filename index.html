@@ -1454,18 +1454,25 @@ let isMusicEnabled = false;
       }
     });
   }
-
-  function playRandomTrack() {
+ function playRandomTrack() {
     if (!isMusicEnabled) return;
     
-    const randomTrack = audioTracks[Math.floor(Math.random() * audioTracks.length)];
-    bgAudio.volume = 0.5; 
+    // 1. Оставляем только те треки, которые сейчас НЕ играют (чтобы треки точно чередовались)
+    const availableTracks = audioTracks.filter(track => bgAudio.src.indexOf(track.replace('./', '')) === -1);
     
-    if (bgAudio.src.indexOf(randomTrack.replace('./', '')) === -1) {
-      bgAudio.src = randomTrack;
+    // 2. Если есть другие треки, выбираем из них случайный
+    if (availableTracks.length > 0) {
+      const nextTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
+      bgAudio.src = nextTrack;
     }
     
+    bgAudio.volume = 0.5; 
+    
+    // 3. Запускаем трек с умной обработкой ошибок
     bgAudio.play().catch(err => {
+      // Игнорируем ошибку AbortError (она возникает, когда один трек резко сменяет другой)
+      if (err.name === 'AbortError') return;
+      
       console.warn('Автовоспроизведение заблокировано браузером:', err);
       isMusicEnabled = false;
       if(musicToggleBtn) musicToggleBtn.classList.remove('on');
