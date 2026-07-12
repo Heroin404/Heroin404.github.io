@@ -20,13 +20,6 @@ Third-party components (such as audio files, API data, or external libraries) bu
 with Random Masterworks are not covered by this license and remain subject to their 
 own licenses, notices, and vendor terms.
 
-Third-party upstream links used by Random Masterworks (brief reference list):
-- [Musopen / Pixabay / Имя источника музыки]: [Ссылка на сайт или лицензию]
-- [The Metropolitan Museum of Art API]: [Ссылка на API]
-- [Cleveland Museum of Art API]: [Ссылка на API]
-- [Victoria and Albert Museum API]: [Ссылка на API]
-- [Harvard Art Museums API]: [Ссылка на API]
-
 If there is any conflict between this file and the license terms of a bundled
 third-party component for that component alone, the third-party component terms
 control for that component and only for that component.
