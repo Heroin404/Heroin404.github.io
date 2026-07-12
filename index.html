@@ -1463,7 +1463,9 @@
   }
 let isMusicEnabled = false;
   let musicTimeout;
-  let activePlayer = null;
+  const bgAudio = new Audio(); // Создаем только ОДИН плеер
+  bgAudio.loop = true;
+  bgAudio.volume = 0.5;
   let currentTrackName = '';
 
   const audioTracks = [
@@ -1476,13 +1478,6 @@ let isMusicEnabled = false;
     './music/hendel.mp3': 'Г. Ф. Гендель'
   };
 
-  const musicPlayers = audioTracks.map(src => {
-    const audio = new Audio(src);
-    audio.loop = true;
-    audio.volume = 0; 
-    return { src: src, audio: audio, title: trackTitles[src] };
-  });
-
   const musicToggleBtn = document.getElementById('music-toggle');
   if(musicToggleBtn) {
     musicToggleBtn.addEventListener('click', () => {
@@ -1490,16 +1485,11 @@ let isMusicEnabled = false;
       musicToggleBtn.classList.toggle('on', isMusicEnabled);
       
       if (isMusicEnabled) {
-        musicPlayers.forEach(p => {
-          p.audio.volume = 0;
-          p.audio.play().catch(() => {});
-        });
-        playRandomTrack();
+        playRandomTrack(); // Запускаем музыку при клике (браузер одобряет плеер)
       } else {
-        musicPlayers.forEach(p => p.audio.pause());
-        activePlayer = null;
+        bgAudio.pause();
         
-        // Прячем бегущую строку, когда музыка выключена
+        // Прячем бегущую строку
         const tickerWrap = document.getElementById('music-ticker-wrap');
         if (tickerWrap) tickerWrap.style.display = 'none';
       }
@@ -1509,35 +1499,33 @@ let isMusicEnabled = false;
   function playRandomTrack() {
     if (!isMusicEnabled) return;
     
-    const oldPlayer = activePlayer;
-    const availablePlayers = musicPlayers.filter(p => p !== oldPlayer);
+    // Ищем треки, которые сейчас НЕ играют
+    const availableTracks = audioTracks.filter(src => bgAudio.src.indexOf(src.replace('./', '')) === -1);
     
-    if (availablePlayers.length > 0) {
-      activePlayer = availablePlayers[Math.floor(Math.random() * availablePlayers.length)];
-    } else if (musicPlayers.length > 0) {
-      activePlayer = musicPlayers[0];
+    // Выбираем случайный трек из оставшихся
+    let nextTrack = audioTracks[0];
+    if (availableTracks.length > 0) {
+      nextTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
     }
     
-    if (activePlayer) {
-      currentTrackName = activePlayer.title || '';
-      
-      // Обновляем и показываем бегущую строку
-      const tickerWrap = document.getElementById('music-ticker-wrap');
-      const ticker = document.getElementById('music-ticker');
-      if (tickerWrap && ticker) {
-        ticker.textContent = '🎵 ' + currentTrackName + '       ';
-        tickerWrap.style.display = 'block';
-      }
-      
-      musicPlayers.forEach(p => {
-        if (p === activePlayer) {
-          p.audio.currentTime = 0; 
-          p.audio.volume = 0.5;   
-        } else {
-          p.audio.volume = 0;     
-        }
-      });
+    // Меняем файл только если он другой
+    if (bgAudio.src.indexOf(nextTrack.replace('./', '')) === -1) {
+      bgAudio.src = nextTrack;
     }
+    
+    currentTrackName = trackTitles[nextTrack] || '';
+    
+    // Обновляем бегущую строку
+    const tickerWrap = document.getElementById('music-ticker-wrap');
+    const ticker = document.getElementById('music-ticker');
+    if (tickerWrap && ticker) {
+      ticker.textContent = '🎵 ' + currentTrackName + '        ';
+      tickerWrap.style.display = 'block';
+    }
+    
+    // Запускаем трек. Если при быстром свайпе выскочит ошибка — просто игнорируем ее. 
+    // Тумблер больше не будет отключаться!
+    bgAudio.play().catch(() => {});
   }
 
   function setupObserver(){
@@ -1547,6 +1535,7 @@ let isMusicEnabled = false;
           
           if (isMusicEnabled) {
             clearTimeout(musicTimeout);
+            // Даем задержку в 600мс перед сменой трека, чтобы не переключать при быстром пролистывании
             musicTimeout = setTimeout(playRandomTrack, 600); 
           }
 
