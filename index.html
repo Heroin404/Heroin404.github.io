@@ -375,10 +375,40 @@
     .plaque-title{ font-size:19px; }
     .rail{ right:10px; gap:16px; }
   }
+  #music-ticker-wrap {
+  position: fixed;
+  top: 40px; /* Опустите или поднимите, чтобы встало ровно под ваше название */
+  left: 16px; /* Отступ слева */
+  width: 150px; /* Насколько широкой будет зона текста */
+  overflow: hidden;
+  white-space: nowrap;
+  z-index: 20;
+  pointer-events: none; /* Чтобы клики проходили сквозь текст */
+  display: none; /* Скрыто, пока музыка не включена */
+}
+
+/* Сам анимированный текст */
+#music-ticker {
+  display: inline-block;
+  padding-left: 100%; /* Начинает движение из-за правого края контейнера */
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6); /* Полупрозрачный цвет, чтобы не отвлекать */
+  animation: ticker 8s linear infinite; /* 8s - скорость прокрутки (чем больше, тем медленнее) */
+}
+
+/* Анимация движения слева направо */
+@keyframes ticker {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(-100%, 0); }
+}
 </style>
 </head>
 <body>
-
+  
+<div id="music-ticker-wrap">
+  <div id="music-ticker"></div>
+</div>
+  
 <div id="boot">
   <div class="mark">Random Masterworks</div>
   <div class="sub" id="boot-sub">собираем ленту</div>
@@ -1449,7 +1479,7 @@ let isMusicEnabled = false;
   const musicPlayers = audioTracks.map(src => {
     const audio = new Audio(src);
     audio.loop = true;
-    audio.volume = 0.5;
+    audio.volume = 0; 
     return { src: src, audio: audio, title: trackTitles[src] };
   });
 
@@ -1461,15 +1491,17 @@ let isMusicEnabled = false;
       
       if (isMusicEnabled) {
         musicPlayers.forEach(p => {
-          p.audio.play().then(() => {
-            if (!isMusicEnabled || activePlayer !== p) {
-              p.audio.pause();
-            }
-          }).catch(() => {});
+          p.audio.volume = 0;
+          p.audio.play().catch(() => {});
         });
         playRandomTrack();
       } else {
-        if (activePlayer) activePlayer.audio.pause();
+        musicPlayers.forEach(p => p.audio.pause());
+        activePlayer = null;
+        
+        // Прячем бегущую строку, когда музыка выключена
+        const tickerWrap = document.getElementById('music-ticker-wrap');
+        if (tickerWrap) tickerWrap.style.display = 'none';
       }
     });
   }
@@ -1477,12 +1509,8 @@ let isMusicEnabled = false;
   function playRandomTrack() {
     if (!isMusicEnabled) return;
     
-    if (activePlayer) {
-      activePlayer.audio.pause();
-      activePlayer.audio.currentTime = 0; 
-    }
-    
-    const availablePlayers = musicPlayers.filter(p => p !== activePlayer);
+    const oldPlayer = activePlayer;
+    const availablePlayers = musicPlayers.filter(p => p !== oldPlayer);
     
     if (availablePlayers.length > 0) {
       activePlayer = availablePlayers[Math.floor(Math.random() * availablePlayers.length)];
@@ -1492,8 +1520,22 @@ let isMusicEnabled = false;
     
     if (activePlayer) {
       currentTrackName = activePlayer.title || '';
-      activePlayer.audio.play().catch(err => {
-        console.warn('Не удалось запустить трек при свайпе:', err.name);
+      
+      // Обновляем и показываем бегущую строку
+      const tickerWrap = document.getElementById('music-ticker-wrap');
+      const ticker = document.getElementById('music-ticker');
+      if (tickerWrap && ticker) {
+        ticker.textContent = '🎵 ' + currentTrackName + '       ';
+        tickerWrap.style.display = 'block';
+      }
+      
+      musicPlayers.forEach(p => {
+        if (p === activePlayer) {
+          p.audio.currentTime = 0; 
+          p.audio.volume = 0.5;   
+        } else {
+          p.audio.volume = 0;     
+        }
       });
     }
   }
