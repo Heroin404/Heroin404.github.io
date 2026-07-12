@@ -400,7 +400,11 @@
   <button class="lang-option" data-lang="ru"><span>Русский</span><span class="dot"></span></button>
   <button class="lang-option" data-lang="en"><span>English</span><span class="dot"></span></button>
   <p class="panel-note" id="panel-note">Artwork text is translated automatically.</p>
-
+<p class="panel-title" style="margin-top: 14px;">Музыка / Music</p>
+  <div class="source-row" style="margin-bottom: 14px;">
+    <span>Фоновый трек</span>
+    <div class="switch" id="music-toggle"><div class="knob"></div></div>
+  </div>
   <p class="panel-title" id="panel-title-src">Sources</p>
   <div class="source-row">
     <span id="src-met-label">The Metropolitan Museum of Art</span>
@@ -1334,26 +1338,6 @@
     }
     return items.length;
   }
-
-  function setupObserver(){
-    observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if(entry.isIntersecting){
-          const idx = Array.from(feed.children).indexOf(entry.target);
-          if(idx >= feed.children.length - 2){
-            loadMore(4);
-          }
-          if(!hintShown){
-            hintShown = true;
-            hint.style.transition = 'opacity .6s ease';
-            hint.style.opacity = '0';
-            setTimeout(() => hint.remove(), 700);
-          }
-        }
-      });
-    }, { root: feed, threshold: 0.6 });
-  }
-
   document.addEventListener('keydown', (e) => {
     if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
       e.preventDefault();
@@ -1447,7 +1431,70 @@
       setLoaderText('loadMoreFailed');
     }
   }
+let isMusicEnabled = false;
+  const bgAudio = new Audio();
+  bgAudio.loop = true; 
+  let musicTimeout;
 
+  const audioTracks = [
+    './music/chopen.mp3',
+    './music/hendel.mp3'
+  ];
+
+  const musicToggleBtn = document.getElementById('music-toggle');
+  if(musicToggleBtn) {
+    musicToggleBtn.addEventListener('click', () => {
+      isMusicEnabled = !isMusicEnabled;
+      musicToggleBtn.classList.toggle('on', isMusicEnabled);
+      
+      if (isMusicEnabled) {
+        playRandomTrack();
+      } else {
+        bgAudio.pause();
+      }
+    });
+  }
+
+  function playRandomTrack() {
+    if (!isMusicEnabled) return;
+    
+    const randomTrack = audioTracks[Math.floor(Math.random() * audioTracks.length)];
+    bgAudio.volume = 0.5; 
+    
+    if (bgAudio.src.indexOf(randomTrack.replace('./', '')) === -1) {
+      bgAudio.src = randomTrack;
+    }
+    
+    bgAudio.play().catch(err => {
+      console.warn('Автовоспроизведение заблокировано браузером:', err);
+      isMusicEnabled = false;
+      if(musicToggleBtn) musicToggleBtn.classList.remove('on');
+    });
+  }
+  function setupObserver(){
+    observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if(entry.isIntersecting){
+          
+          if (isMusicEnabled) {
+            clearTimeout(musicTimeout);
+            musicTimeout = setTimeout(playRandomTrack, 600); 
+          }
+
+          const idx = Array.from(feed.children).indexOf(entry.target);
+          if(idx >= feed.children.length - 2){
+            loadMore(4);
+          }
+          if(!hintShown){
+            hintShown = true;
+            hint.style.transition = 'opacity .6s ease';
+            hint.style.opacity = '0';
+            setTimeout(() => hint.remove(), 700);
+          }
+        }
+      });
+    }, { root: feed, threshold: 0.6 });
+  }
   boot_init();
 })();
 </script>
