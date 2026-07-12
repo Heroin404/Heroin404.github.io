@@ -1432,14 +1432,26 @@
     }
   }
 let isMusicEnabled = false;
-  const bgAudio = new Audio();
-  bgAudio.loop = true; 
   let musicTimeout;
+  let activePlayer = null;
+  let currentTrackName = '';
 
   const audioTracks = [
     './music/chopen.mp3',
     './music/hendel.mp3'
   ];
+
+  const trackTitles = {
+    './music/chopen.mp3': 'Ф. Шопен',
+    './music/hendel.mp3': 'Г. Ф. Гендель'
+  };
+
+  const musicPlayers = audioTracks.map(src => {
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = 0.5;
+    return { src: src, audio: audio, title: trackTitles[src] };
+  });
 
   const musicToggleBtn = document.getElementById('music-toggle');
   if(musicToggleBtn) {
@@ -1448,36 +1460,44 @@ let isMusicEnabled = false;
       musicToggleBtn.classList.toggle('on', isMusicEnabled);
       
       if (isMusicEnabled) {
+        musicPlayers.forEach(p => {
+          p.audio.play().then(() => {
+            if (!isMusicEnabled || activePlayer !== p) {
+              p.audio.pause();
+            }
+          }).catch(() => {});
+        });
         playRandomTrack();
       } else {
-        bgAudio.pause();
+        if (activePlayer) activePlayer.audio.pause();
       }
     });
   }
- function playRandomTrack() {
+
+  function playRandomTrack() {
     if (!isMusicEnabled) return;
     
-    // 1. Оставляем только те треки, которые сейчас НЕ играют (чтобы треки точно чередовались)
-    const availableTracks = audioTracks.filter(track => bgAudio.src.indexOf(track.replace('./', '')) === -1);
-    
-    // 2. Если есть другие треки, выбираем из них случайный
-    if (availableTracks.length > 0) {
-      const nextTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
-      bgAudio.src = nextTrack;
+    if (activePlayer) {
+      activePlayer.audio.pause();
+      activePlayer.audio.currentTime = 0; 
     }
     
-    bgAudio.volume = 0.5; 
+    const availablePlayers = musicPlayers.filter(p => p !== activePlayer);
     
-    // 3. Запускаем трек с умной обработкой ошибок
-    bgAudio.play().catch(err => {
-      // Игнорируем ошибку AbortError (она возникает, когда один трек резко сменяет другой)
-      if (err.name === 'AbortError') return;
-      
-      console.warn('Автовоспроизведение заблокировано браузером:', err);
-      isMusicEnabled = false;
-      if(musicToggleBtn) musicToggleBtn.classList.remove('on');
-    });
+    if (availablePlayers.length > 0) {
+      activePlayer = availablePlayers[Math.floor(Math.random() * availablePlayers.length)];
+    } else if (musicPlayers.length > 0) {
+      activePlayer = musicPlayers[0];
+    }
+    
+    if (activePlayer) {
+      currentTrackName = activePlayer.title || '';
+      activePlayer.audio.play().catch(err => {
+        console.warn('Не удалось запустить трек при свайпе:', err.name);
+      });
+    }
   }
+
   function setupObserver(){
     observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
