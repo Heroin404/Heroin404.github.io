@@ -1496,7 +1496,7 @@ let isMusicEnabled = false;
     });
   }
 
-  function playRandomTrack() {
+ function playRandomTrack() {
     if (!isMusicEnabled) return;
     
     // Ищем треки, которые сейчас НЕ играют
@@ -1510,9 +1510,12 @@ let isMusicEnabled = false;
     
     // Меняем файл только если он другой
     if (bgAudio.src.indexOf(nextTrack.replace('./', '')) === -1) {
+      bgAudio.pause(); // Обязательно глушим старый трек!
       bgAudio.src = nextTrack;
+      bgAudio.load();  // Заставляем браузер забыть старый звук и загрузить новый
     }
     
+    // Запоминаем название для бегущей строки (эту строчку мы вернули на место)
     currentTrackName = trackTitles[nextTrack] || '';
     
     // Обновляем бегущую строку
@@ -1523,8 +1526,7 @@ let isMusicEnabled = false;
       tickerWrap.style.display = 'block';
     }
     
-    // Запускаем трек. Если при быстром свайпе выскочит ошибка — просто игнорируем ее. 
-    // Тумблер больше не будет отключаться!
+    // Запускаем трек
     bgAudio.play().catch(() => {});
   }
 
