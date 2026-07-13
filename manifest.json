@@ -1,6 +1,6 @@
 {
   "name": "Random Masterworks by Oleg Popov",
-  "short_name": "Masterworks",
+  "short_name": "R-Masterworks",
   "description": "Бесконечная лента шедевров классического искусства.",
   "start_url": "./index.html",
   "display": "standalone",
