@@ -3,7 +3,7 @@
 // Museum APIs and artwork images are NOT cached here (cross-origin opaque
 // responses would waste a lot of storage quota) — the browser's own HTTP
 // cache handles images.
-const CACHE = 'rm-shell-v1';
+const CACHE = 'rm-shell-v2';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -29,7 +29,9 @@ self.addEventListener('fetch', (e) => {
   // Page: network first (so updates show up right away), cache when offline.
   if(req.mode === 'navigate' || url.pathname.endsWith('/index.html')){
     e.respondWith(
-      fetch(req).then(res => {
+      // cache:'no-cache' revalidates with the server, so a fresh deploy is
+      // picked up immediately instead of waiting out GitHub Pages' 10-min max-age.
+      fetch(req, { cache: 'no-cache' }).then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put('./index.html', copy));
         return res;
