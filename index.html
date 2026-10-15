@@ -1693,7 +1693,8 @@
       title: it.title[0],
       artist: artist || null,
       date: (it.year && it.year[0]) || '',
-      medium: (it.type || 'IMAGE') === 'IMAGE' ? null : it.type,
+      medium: null,
+      _typeText: [].concat(it.dcType || [], it.dcTypeLangAware ? Object.values(it.dcTypeLangAware).flat() : []).join(' ').slice(0, 600),
       img: img,
       imgPreview: prev,
       source: it.guid || ('https://www.europeana.eu/item' + it.id),
@@ -1703,7 +1704,7 @@
   }
   async function europeanaSearch(query, extraQf, start, rows){
     const url = 'https://api.europeana.eu/record/v2/search.json?wskey=' + encodeURIComponent(EUROPEANA_API_KEY)
-      + '&query=' + encodeURIComponent(query)
+      + '&query=' + encodeURIComponent('(' + query + ') NOT (book OR boek OR buch OR manuscript OR handschrift)')
       + '&qf=TYPE:IMAGE&qf=IMAGE_SIZE:large&reusability=open&media=true&profile=standard'
       + (extraQf || '') + '&start=' + start + '&rows=' + rows;
     const res = await fetchWithTimeout(url, {}, 6000);
@@ -1822,8 +1823,20 @@
     'Smithsonian': fetchSmithsonianByArtist
   };
 
+  // Drops books, manuscripts, albums and similar from every source — the
+  // feed is meant to be paintings and prints only.
+  const BOOK_WORDS = /\b(books?|boeken|boek|buch|b[üu]cher|livres?|libros?|libri|manuscripts?|handschrift|codex|atlas|sketchbooks?|pamphlets?|periodicals?|magazines?|journals?|newspapers?|tijdschrift|zeitschrift|krant|zeitung|bound volume|volumes?)\b/i;
+  const BOOK_TITLE = /(^(the )?(book|boek|buch|livre|libro)\b)|\b(title ?page|titelblad|titelblatt|frontispiece|book of hours|stammbuch|prentenboek|album amicorum)\b/i;
+  function looksLikeBook(it){
+    if(it.medium && BOOK_WORDS.test(it.medium)) return true;
+    if(it._typeText && BOOK_WORDS.test(it._typeText)) return true;
+    if(it.title && BOOK_TITLE.test(it.title)) return true;
+    return false;
+  }
+
   function dedupe(items){
     return items.filter(it => {
+      if(looksLikeBook(it)) return false;
       const key = it.museum + '::' + it.id;
       if(seenIds.has(key)) return false;
       seenIds.add(key);
@@ -1840,7 +1853,7 @@
       raceWithFallback(BY_ARTIST_FETCHERS[museum](query, 14), 9000, [])
     );
     const settled = await Promise.all(jobs);
-    return shuffle(settled.flat());
+    return shuffle(settled.flat().filter(it => !looksLikeBook(it)));
   }
 
   // Caps how long we'll wait on any single source. If a museum's API is
