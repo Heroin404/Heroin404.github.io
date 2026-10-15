@@ -883,8 +883,19 @@
   }
   setTimeout(forceHideBoot, 12000);
 
-  let lang = 'ru';
-  let theme = 'dark';
+  // Tiny safe wrapper around localStorage (it can throw in private mode).
+  const store = {
+    get(key, fallback){
+      try{ const v = localStorage.getItem('rm.' + key); return v == null ? fallback : JSON.parse(v); }
+      catch(e){ return fallback; }
+    },
+    set(key, val){
+      try{ localStorage.setItem('rm.' + key, JSON.stringify(val)); }catch(e){}
+    }
+  };
+
+  let lang = store.get('lang', 'ru') === 'en' ? 'en' : 'ru';
+  let theme = store.get('theme', 'dark') === 'light' ? 'light' : 'dark';
   const sources = { met: true, cleveland: true, va: true, harvard: true };
 
   const MUSEUM_TO_KEY = { 'The Met': 'met', 'Cleveland': 'cleveland', 'V&A': 'va', 'Harvard': 'harvard' };
@@ -894,13 +905,16 @@
   // Saved/bookmarked artworks — separate from "like" (which drives
   // recommendations). Keyed by "museum::id" -> full item object, so the
   // saved grid can be rendered/opened without re-fetching from the APIs.
-  const savedItems = {};
+  const savedItems = store.get('saved', {});
+  const likedKeys = new Set(store.get('likedKeys', []));
+  function persistSaved(){ store.set('saved', savedItems); }
+  function persistLikedKeys(){ store.set('likedKeys', Array.from(likedKeys)); }
 
   function loadLikeStore(){
-    return {};
+    return store.get('likes', {});
   }
   function saveLikeStore(){
-    // kept in memory only for this session — see chat note on persistence
+    store.set('likes', likeStore);
   }
   const likeStore = loadLikeStore(); // key: "museum::artist" -> { museum, artist, count }
 
@@ -1791,8 +1805,10 @@
     const likeBtn = node.querySelector('.like');
     const likeCount = node.querySelector('.like-count');
     const heartBurst = node.querySelector('.heart-burst');
-    let liked = false;
-    likeCount.textContent = '0';
+    const likeKey = item.museum + '::' + item.id;
+    let liked = likedKeys.has(likeKey);
+    likeCount.textContent = liked ? '1' : '0';
+    likeBtn.classList.toggle('active', liked);
 
     // Real IP-backed like counting (LIKES_API_BASE) is paused for now —
     // simple local toggle until that feature is revisited.
@@ -1801,12 +1817,17 @@
       likeBtn.classList.toggle('active', liked);
       likeCount.textContent = Math.max(0, (parseInt(likeCount.textContent, 10) || 0) + (liked ? 1 : -1));
       if(liked){
+        likedKeys.add(likeKey);
+        persistLikedKeys();
         recordLike(item);
         if(showBurst){
           heartBurst.classList.remove('play');
           void heartBurst.offsetWidth;
           heartBurst.classList.add('play');
         }
+      }else{
+        likedKeys.delete(likeKey);
+        persistLikedKeys();
       }
     }
     likeBtn.addEventListener('click', () => doLike(true));
@@ -1823,6 +1844,7 @@
       }else{
         delete savedItems[itemKey];
       }
+      persistSaved();
       updateSavedNavBadge();
     });
 
@@ -2179,12 +2201,14 @@
   function setTheme(newTheme){
     if(newTheme === theme) return;
     theme = newTheme;
+    store.set('theme', theme);
     applyTheme();
   }
 
   function setLanguage(newLang){
     if(newLang === lang) return;
     lang = newLang;
+    store.set('lang', lang);
     applyGlobalStrings();
     Array.from(feed.children).forEach(node => applySlideLanguage(node, true));
     updateMusicTickerLanguage();
@@ -2230,6 +2254,9 @@
 
   document.getElementById('rec-reset').addEventListener('click', () => {
     Object.keys(likeStore).forEach(k => delete likeStore[k]);
+    saveLikeStore();
+    likedKeys.clear();
+    persistLikedKeys();
     document.querySelectorAll('.rail-btn.like.active').forEach(btn => btn.classList.remove('active'));
   });
 
@@ -2799,7 +2826,14 @@ let isMusicEnabled = false;
   document.getElementById('artist-banner-btn').addEventListener('click', exitArtistMode);
 
   warmMetCache();
+  updateSavedNavBadge();
   boot_init();
+
+  if('serviceWorker' in navigator && /^https?:/.test(location.protocol)){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
 })();
 </script>
 </body>
