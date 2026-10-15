@@ -14,6 +14,9 @@
 <link rel="preconnect" href="https://api.vam.ac.uk">
 <link rel="preconnect" href="https://framemark.vam.ac.uk">
 <link rel="preconnect" href="https://api.harvardartmuseums.org">
+<link rel="preconnect" href="https://api.smk.dk">
+<link rel="preconnect" href="https://iip-thumb.smk.dk">
+<link rel="preconnect" href="https://api.europeana.eu">
 <link rel="preconnect" href="https://images.metmuseum.org">
 <!-- Yandex РСЯ ad loader — paused for now. To re-enable, uncomment these two
      lines and the maybeShowFullscreenAd() call in the script below.
@@ -755,6 +758,22 @@
     <span id="src-harvard-label">Harvard Art Museums</span>
     <div class="switch on" data-source="harvard"><div class="knob"></div></div>
   </div>
+  <div class="source-row">
+    <span id="src-smk-label">SMK — National Gallery of Denmark</span>
+    <div class="switch on" data-source="smk"><div class="knob"></div></div>
+  </div>
+  <div class="source-row">
+    <span id="src-rijks-label">Rijksmuseum</span>
+    <div class="switch on" data-source="rijks"><div class="knob"></div></div>
+  </div>
+  <div class="source-row">
+    <span id="src-europeana-label">Europeana</span>
+    <div class="switch on" data-source="europeana"><div class="knob"></div></div>
+  </div>
+  <div class="source-row">
+    <span id="src-smithsonian-label">Smithsonian</span>
+    <div class="switch" data-source="smithsonian"><div class="knob"></div></div>
+  </div>
 
   <p class="panel-title" id="panel-title-rec">Recommendations</p>
   <div class="source-row">
@@ -883,24 +902,48 @@
   }
   setTimeout(forceHideBoot, 12000);
 
-  let lang = 'ru';
-  let theme = 'dark';
-  const sources = { met: true, cleveland: true, va: true, harvard: true };
+  // Tiny safe wrapper around localStorage (it can throw in private mode).
+  const store = {
+    get(key, fallback){
+      try{ const v = localStorage.getItem('rm.' + key); return v == null ? fallback : JSON.parse(v); }
+      catch(e){ return fallback; }
+    },
+    set(key, val){
+      try{ localStorage.setItem('rm.' + key, JSON.stringify(val)); }catch(e){}
+    }
+  };
 
-  const MUSEUM_TO_KEY = { 'The Met': 'met', 'Cleveland': 'cleveland', 'V&A': 'va', 'Harvard': 'harvard' };
+  let lang = store.get('lang', 'ru') === 'en' ? 'en' : 'ru';
+  let theme = store.get('theme', 'dark') === 'light' ? 'light' : 'dark';
+  // Keys for the newer sources. 'api2demo' (Europeana) and 'DEMO_KEY'
+  // (Smithsonian / api.data.gov) are public demo keys with tiny shared limits —
+  // register your own free keys and paste them here:
+  //   Europeana:   https://pro.europeana.eu/pages/get-api
+  //   Smithsonian: https://api.data.gov/signup/
+  const EUROPEANA_API_KEY = 'mplethamenn';
+  const SMITHSONIAN_API_KEY = 'DEMO_KEY';
+  const sources = { met: true, cleveland: true, va: true, harvard: true,
+    smk: true, rijks: true, europeana: true,
+    smithsonian: SMITHSONIAN_API_KEY !== 'DEMO_KEY' };
+
+  const MUSEUM_TO_KEY = { 'The Met': 'met', 'Cleveland': 'cleveland', 'V&A': 'va', 'Harvard': 'harvard',
+    'SMK': 'smk', 'Rijksmuseum': 'rijks', 'Europeana': 'europeana', 'Smithsonian': 'smithsonian' };
   const seenIds = new Set();
   let recommendationsEnabled = true;
 
   // Saved/bookmarked artworks — separate from "like" (which drives
   // recommendations). Keyed by "museum::id" -> full item object, so the
   // saved grid can be rendered/opened without re-fetching from the APIs.
-  const savedItems = {};
+  const savedItems = store.get('saved', {});
+  const likedKeys = new Set(store.get('likedKeys', []));
+  function persistSaved(){ store.set('saved', savedItems); }
+  function persistLikedKeys(){ store.set('likedKeys', Array.from(likedKeys)); }
 
   function loadLikeStore(){
-    return {};
+    return store.get('likes', {});
   }
   function saveLikeStore(){
-    // kept in memory only for this session — see chat note on persistence
+    store.set('likes', likeStore);
   }
   const likeStore = loadLikeStore(); // key: "museum::artist" -> { museum, artist, count }
 
@@ -990,6 +1033,10 @@
       srcCleveland: 'Музей искусств Кливленда',
       srcVa: 'Музей Виктории и Альберта',
       srcHarvard: 'Художественные музеи Гарварда',
+      srcSmk: 'SMK — Национальная галерея Дании',
+      srcRijks: 'Рейксмюзеум',
+      srcEuropeana: 'Europeana',
+      srcSmithsonian: 'Смитсоновский институт',
       untitled: 'Без названия',
       unknownArtist: 'Автор неизвестен',
       mediumFallback: 'Материал не указан',
@@ -1043,6 +1090,10 @@
       srcCleveland: 'Cleveland Museum of Art',
       srcVa: 'Victoria and Albert Museum',
       srcHarvard: 'Harvard Art Museums',
+      srcSmk: 'SMK — National Gallery of Denmark',
+      srcRijks: 'Rijksmuseum',
+      srcEuropeana: 'Europeana',
+      srcSmithsonian: 'Smithsonian',
       untitled: 'Untitled',
       unknownArtist: 'Unknown artist',
       mediumFallback: 'Medium not specified',
@@ -1555,11 +1606,220 @@
     }catch(e){ return []; }
   }
 
+  // ---- SMK (Statens Museum for Kunst, Denmark): no key, CORS open ----
+  const SMK_TYPES = [
+    { name: 'maleri', max: 1200, w: 5 },     // paintings
+    { name: 'raderi', max: 900, w: 2 },      // etchings
+    { name: 'kobberstik', max: 300, w: 1 },  // engravings
+    { name: 'træsnit', max: 300, w: 1 },     // woodcuts
+    { name: 'litografi', max: 300, w: 1 }    // lithographs
+  ];
+  function smkPickType(){
+    const total = SMK_TYPES.reduce((a, t) => a + t.w, 0);
+    let r = Math.random() * total;
+    for(const t of SMK_TYPES){ r -= t.w; if(r <= 0) return t; }
+    return SMK_TYPES[0];
+  }
+  const SMK_FIELDS = 'id,object_number,titles,production,production_date,object_names,image_thumbnail,image_iiif_id,frontend_url,has_image,public_domain';
+  function mapSMK(r){
+    if(!r || !r.image_thumbnail) return null;
+    const titles = r.titles || [];
+    const en = titles.find(t => /engelsk|english/i.test(t.language || ''));
+    const tt = en || titles[0];
+    const prod = (r.production && r.production[0]) || {};
+    let artist = prod.creator || null;
+    if(artist && artist.indexOf(',') > -1){
+      const parts = artist.split(',').map(x => x.trim());
+      artist = parts[1] + ' ' + parts[0]; // "Ballin, Mogens" -> "Mogens Ballin"
+    }
+    const pd = r.production_date && r.production_date[0];
+    return {
+      id: r.object_number || r.id,
+      title: tt ? tt.title : null,
+      artist: artist,
+      date: (pd && (pd.period || pd.start)) || '',
+      medium: (r.object_names && r.object_names[0] && r.object_names[0].name) || null,
+      img: r.image_iiif_id ? (r.image_iiif_id + '/full/!2000,/0/default.jpg') : r.image_thumbnail,
+      imgPreview: r.image_thumbnail,
+      source: r.frontend_url || ('https://open.smk.dk/artwork/image/' + encodeURIComponent(r.object_number)),
+      museum: 'SMK',
+      srcLang: en ? 'en' : 'da'
+    };
+  }
+  async function fetchSMK(count){
+    const results = [];
+    let attempts = 0;
+    while(results.length < count && attempts < 4){
+      attempts++;
+      const type = smkPickType();
+      const offset = attempts > 2 ? Math.floor(Math.random() * 100) : Math.floor(Math.random() * type.max);
+      const url = 'https://api.smk.dk/api/v1/art/search/?keys=*'
+        + '&filters=' + encodeURIComponent('[has_image:true],[public_domain:true],[object_names:' + type.name + ']')
+        + '&fields=' + SMK_FIELDS + '&offset=' + offset + '&rows=20';
+      try{
+        const res = await fetchWithTimeout(url, {}, 6000);
+        if(!res.ok) continue;
+        const data = await res.json();
+        for(const r of shuffle((data.items || []).slice())){
+          if(results.length >= count) break;
+          const it = mapSMK(r);
+          if(it) results.push(it);
+        }
+      }catch(e){ console.error('SMK fetch error', e); }
+    }
+    return results;
+  }
+  async function fetchSMKByArtist(artist, count){
+    try{
+      const url = 'https://api.smk.dk/api/v1/art/search/?keys=' + encodeURIComponent(artist)
+        + '&filters=' + encodeURIComponent('[has_image:true],[public_domain:true]')
+        + '&fields=' + SMK_FIELDS + '&offset=0&rows=20';
+      const res = await fetchWithTimeout(url, {}, 6000);
+      if(!res.ok) return [];
+      const data = await res.json();
+      return shuffle((data.items || []).map(mapSMK).filter(Boolean)).slice(0, count);
+    }catch(e){ return []; }
+  }
+
+  // ---- Europeana (also used for Rijksmuseum, which it aggregates) ----
+  function mapEuropeana(it, museumLabel){
+    const img = it.edmIsShownBy && it.edmIsShownBy[0];
+    const prev = (it.edmPreview && it.edmPreview[0]) || img;
+    if(!img || !prev || !it.title || !it.title[0]) return null;
+    let artist = it.dcCreator && it.dcCreator[0];
+    if(artist && /^https?:/i.test(artist)) artist = null;
+    return {
+      id: it.id,
+      title: it.title[0],
+      artist: artist || null,
+      date: (it.year && it.year[0]) || '',
+      medium: (it.type || 'IMAGE') === 'IMAGE' ? null : it.type,
+      img: img,
+      imgPreview: prev,
+      source: it.guid || ('https://www.europeana.eu/item' + it.id),
+      museum: museumLabel,
+      srcLang: 'auto'
+    };
+  }
+  async function europeanaSearch(query, extraQf, start, rows){
+    const url = 'https://api.europeana.eu/record/v2/search.json?wskey=' + encodeURIComponent(EUROPEANA_API_KEY)
+      + '&query=' + encodeURIComponent(query)
+      + '&qf=TYPE:IMAGE&qf=IMAGE_SIZE:large&reusability=open&media=true&profile=standard'
+      + (extraQf || '') + '&start=' + start + '&rows=' + rows;
+    const res = await fetchWithTimeout(url, {}, 6000);
+    if(!res.ok) return [];
+    const data = await res.json();
+    return data.items || [];
+  }
+  async function fetchEuropeanaGeneric(count, label, query, extraQf, maxStart){
+    const results = [];
+    let attempts = 0;
+    while(results.length < count && attempts < 3){
+      attempts++;
+      const start = attempts > 2 ? 1 : 1 + Math.floor(Math.random() * maxStart);
+      try{
+        const items = await europeanaSearch(query, extraQf, start, 20);
+        for(const raw of shuffle(items.slice())){
+          if(results.length >= count) break;
+          const it = mapEuropeana(raw, label);
+          if(it) results.push(it);
+        }
+      }catch(e){ console.error(label + ' fetch error', e); }
+    }
+    return results;
+  }
+  function fetchRijks(count){
+    const q = Math.random() < 0.6 ? '(painting OR schilderij)' : '(print OR prent OR etching)';
+    return fetchEuropeanaGeneric(count, 'Rijksmuseum', q, '&qf=DATA_PROVIDER:%22Rijksmuseum%22', 600);
+  }
+  function fetchEuropeana(count){
+    const qs = ['painting', 'oil painting', 'engraving', 'etching', 'woodcut', 'lithograph'];
+    const q = qs[Math.floor(Math.random() * qs.length)];
+    return fetchEuropeanaGeneric(count, 'Europeana', q, '&qf=what:' + encodeURIComponent('(' + q.split(' ').pop() + ')'), 900);
+  }
+  async function fetchRijksByArtist(artist, count){
+    try{
+      const items = await europeanaSearch('"' + artist + '"', '&qf=DATA_PROVIDER:%22Rijksmuseum%22', 1, 20);
+      return shuffle(items.map(i => mapEuropeana(i, 'Rijksmuseum')).filter(Boolean)).slice(0, count);
+    }catch(e){ return []; }
+  }
+  async function fetchEuropeanaByArtist(artist, count){
+    try{
+      const items = await europeanaSearch('who:"' + artist + '"', '', 1, 20);
+      return shuffle(items.map(i => mapEuropeana(i, 'Europeana')).filter(Boolean)).slice(0, count);
+    }catch(e){ return []; }
+  }
+
+  // ---- Smithsonian Open Access (CC0 only) ----
+  function mapSmithsonian(r){
+    const c = r && r.content;
+    const d = c && c.descriptiveNonRepeating;
+    const media = d && d.online_media && d.online_media.media && d.online_media.media[0];
+    if(!media || media.type !== 'Images' || !media.content) return null;
+    if(!media.usage || media.usage.access !== 'CC0') return null;
+    const types = (c.indexedStructured && c.indexedStructured.object_type) || [];
+    if(!types.some(t => /paint|print|etching|engrav|lithograph|woodcut|drawing/i.test(t))) return null;
+    const ft = c.freetext || {};
+    const names = ft.name || [];
+    const artistRec = names.find(n => /artist|painter|printmaker|engraver|etcher|lithograph/i.test(n.label || '')) || names[0];
+    const base = media.content;
+    const sep = base.indexOf('?') > -1 ? '&' : '?';
+    const isIds = /ids\.si\.edu/.test(base);
+    return {
+      id: r.id,
+      title: (d.title && d.title.content) || r.title || null,
+      artist: artistRec ? artistRec.content : null,
+      date: (ft.date && ft.date[0] && ft.date[0].content) || '',
+      medium: (ft.physicalDescription && ft.physicalDescription[0] && ft.physicalDescription[0].content) || types[0] || null,
+      img: isIds ? base + sep + 'max=2000' : base,
+      imgPreview: isIds ? base + sep + 'max=700' : (media.thumbnail || base),
+      source: d.record_link || ('https://www.si.edu/object/' + r.id),
+      museum: 'Smithsonian',
+      srcLang: 'en'
+    };
+  }
+  async function smithsonianSearch(q, start, rows){
+    const url = 'https://api.si.edu/openaccess/api/v1.0/search?api_key=' + encodeURIComponent(SMITHSONIAN_API_KEY)
+      + '&q=' + encodeURIComponent(q) + '&start=' + start + '&rows=' + rows;
+    const res = await fetchWithTimeout(url, {}, 6000);
+    if(!res.ok) return [];
+    const data = await res.json();
+    return (data.response && data.response.rows) || [];
+  }
+  async function fetchSmithsonian(count){
+    const results = [];
+    let attempts = 0;
+    while(results.length < count && attempts < 3){
+      attempts++;
+      const kind = Math.random() < 0.6 ? 'painting' : 'print';
+      const start = attempts > 2 ? 0 : Math.floor(Math.random() * 1500);
+      try{
+        const rows = await smithsonianSearch(kind + ' AND online_media_type:"Images"', start, 30);
+        for(const r of shuffle(rows.slice())){
+          if(results.length >= count) break;
+          const it = mapSmithsonian(r);
+          if(it) results.push(it);
+        }
+      }catch(e){ console.error('Smithsonian fetch error', e); }
+    }
+    return results;
+  }
+  async function fetchSmithsonianByArtist(artist, count){
+    try{
+      const rows = await smithsonianSearch('"' + artist + '" AND online_media_type:"Images"', 0, 30);
+      return shuffle(rows.map(mapSmithsonian).filter(Boolean)).slice(0, count);
+    }catch(e){ return []; }
+  }
+
   const BY_ARTIST_FETCHERS = {
     'The Met': fetchMetByArtist,
     'Cleveland': fetchClevelandByArtist,
     'V&A': fetchVAByArtist,
-    'Harvard': fetchHarvardByArtist
+    'Harvard': fetchHarvardByArtist,
+    'SMK': fetchSMKByArtist,
+    'Rijksmuseum': fetchRijksByArtist,
+    'Europeana': fetchEuropeanaByArtist,
+    'Smithsonian': fetchSmithsonianByArtist
   };
 
   function dedupe(items){
@@ -1609,6 +1869,10 @@
     if(sources.cleveland) activeKeys.push('cleveland');
     if(sources.va) activeKeys.push('va');
     if(sources.harvard) activeKeys.push('harvard');
+    if(sources.smk) activeKeys.push('smk');
+    if(sources.rijks) activeKeys.push('rijks');
+    if(sources.europeana) activeKeys.push('europeana');
+    if(sources.smithsonian) activeKeys.push('smithsonian');
     if(activeKeys.length === 0) return 0;
 
     let total = 0;
@@ -1632,7 +1896,8 @@
     const weights = activeKeys.map(k => 1 + (recommendationsEnabled ? museumLikeWeight(k) : 0));
     const totalW = weights.reduce((a, b) => a + b, 0);
     const counts = activeKeys.map((k, i) => Math.max(1, Math.round(remaining * weights[i] / totalW)));
-    const fetcherMap = { met: fetchMet, cleveland: fetchCleveland, va: fetchVA, harvard: fetchHarvard };
+    const fetcherMap = { met: fetchMet, cleveland: fetchCleveland, va: fetchVA, harvard: fetchHarvard,
+      smk: fetchSMK, rijks: fetchRijks, europeana: fetchEuropeana, smithsonian: fetchSmithsonian };
 
     const jobs = activeKeys.map((k, i) =>
       raceWithFallback(fetcherMap[k](counts[i]), 8000, []).then(items => emit(shuffle(dedupe(items))))
@@ -1791,8 +2056,10 @@
     const likeBtn = node.querySelector('.like');
     const likeCount = node.querySelector('.like-count');
     const heartBurst = node.querySelector('.heart-burst');
-    let liked = false;
-    likeCount.textContent = '0';
+    const likeKey = item.museum + '::' + item.id;
+    let liked = likedKeys.has(likeKey);
+    likeCount.textContent = liked ? '1' : '0';
+    likeBtn.classList.toggle('active', liked);
 
     // Real IP-backed like counting (LIKES_API_BASE) is paused for now —
     // simple local toggle until that feature is revisited.
@@ -1801,12 +2068,17 @@
       likeBtn.classList.toggle('active', liked);
       likeCount.textContent = Math.max(0, (parseInt(likeCount.textContent, 10) || 0) + (liked ? 1 : -1));
       if(liked){
+        likedKeys.add(likeKey);
+        persistLikedKeys();
         recordLike(item);
         if(showBurst){
           heartBurst.classList.remove('play');
           void heartBurst.offsetWidth;
           heartBurst.classList.add('play');
         }
+      }else{
+        likedKeys.delete(likeKey);
+        persistLikedKeys();
       }
     }
     likeBtn.addEventListener('click', () => doLike(true));
@@ -1823,6 +2095,7 @@
       }else{
         delete savedItems[itemKey];
       }
+      persistSaved();
       updateSavedNavBadge();
     });
 
@@ -2129,6 +2402,10 @@
     document.getElementById('src-cleveland-label').textContent = t('srcCleveland');
     document.getElementById('src-va-label').textContent = t('srcVa');
     document.getElementById('src-harvard-label').textContent = t('srcHarvard');
+    document.getElementById('src-smk-label').textContent = t('srcSmk');
+    document.getElementById('src-rijks-label').textContent = t('srcRijks');
+    document.getElementById('src-europeana-label').textContent = t('srcEuropeana');
+    document.getElementById('src-smithsonian-label').textContent = t('srcSmithsonian');
     document.getElementById('panel-title-rec').textContent = t('panelTitleRec');
     document.getElementById('rec-toggle-label').textContent = t('recToggleLabel');
     document.getElementById('rec-reset').textContent = t('recResetLabel');
@@ -2179,12 +2456,14 @@
   function setTheme(newTheme){
     if(newTheme === theme) return;
     theme = newTheme;
+    store.set('theme', theme);
     applyTheme();
   }
 
   function setLanguage(newLang){
     if(newLang === lang) return;
     lang = newLang;
+    store.set('lang', lang);
     applyGlobalStrings();
     Array.from(feed.children).forEach(node => applySlideLanguage(node, true));
     updateMusicTickerLanguage();
@@ -2230,6 +2509,9 @@
 
   document.getElementById('rec-reset').addEventListener('click', () => {
     Object.keys(likeStore).forEach(k => delete likeStore[k]);
+    saveLikeStore();
+    likedKeys.clear();
+    persistLikedKeys();
     document.querySelectorAll('.rail-btn.like.active').forEach(btn => btn.classList.remove('active'));
   });
 
@@ -2799,7 +3081,14 @@ let isMusicEnabled = false;
   document.getElementById('artist-banner-btn').addEventListener('click', exitArtistMode);
 
   warmMetCache();
+  updateSavedNavBadge();
   boot_init();
+
+  if('serviceWorker' in navigator && /^https?:/.test(location.protocol)){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
 })();
 </script>
 </body>
