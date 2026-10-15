@@ -1274,48 +1274,68 @@
     });
   }
 
+  // Met search results (just id lists) never change during a session, so we
+  // cache them and warm the cache at startup — the first feed batch then
+  // skips the slowest request entirely.
+  const metSearchCache = {};
+  function getMetIds(dept, q){
+    const key = dept + ':' + q;
+    if(!metSearchCache[key]){
+      const searchUrl = 'https://collectionapi.metmuseum.org/public/collection/v1/search'
+        + '?hasImages=true&isPublicDomain=true&departmentId=' + dept + '&q=' + q;
+      metSearchCache[key] = fetchWithTimeout(searchUrl, {}, 5000)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => (d && d.objectIDs) || [])
+        .catch(() => []);
+      metSearchCache[key].then(ids => { if(!ids.length) delete metSearchCache[key]; });
+    }
+    return metSearchCache[key];
+  }
+  function warmMetCache(){ getMetIds(11, 'painting'); getMetIds(9, 'print'); }
+
   async function fetchMet(count){
     const results = [];
     let guard = 0;
-    while(results.length < count && guard < 6){
+    while(results.length < count && guard < 4){
       guard++;
       // departmentId 11 = European Paintings, 9 = Drawings and Prints
       const isPrints = Math.random() < 0.5;
       const dept = isPrints ? 9 : 11;
       const q = isPrints ? 'print' : 'painting';
-      const searchUrl = 'https://collectionapi.metmuseum.org/public/collection/v1/search'
-        + '?hasImages=true&isPublicDomain=true&departmentId=' + dept + '&q=' + q;
       try{
-        const sres = await fetchWithTimeout(searchUrl, {}, 6000);
-        if(!sres.ok) continue;
-        const sdata = await sres.json();
-        const ids = shuffle((sdata.objectIDs || []).slice()).slice(0, 16);
-        const fetches = ids.map(id =>
-          fetchWithTimeout('https://collectionapi.metmuseum.org/public/collection/v1/objects/' + id, {}, 6000)
-            .then(res => res.ok ? res.json() : null)
-            .catch(() => null)
-        );
-        const objs = await Promise.all(fetches);
-        for(const o of objs){
-          if(results.length >= count) break;
-          if(!o || !o.isPublicDomain) continue;
-          if(!o.classification || !/paint|print/i.test(o.classification)) continue;
-          const full = o.primaryImage;
-          const small = o.primaryImageSmall;
-          if(!full && !small) continue;
-          results.push({
-            id: o.objectID,
-            title: o.title || null,
-            artist: o.artistDisplayName || null,
-            date: o.objectDate || '',
-            medium: o.medium || null,
-            img: full || small,
-            imgPreview: small || full,
-            source: o.objectURL || ('https://www.metmuseum.org/art/collection/search/' + o.objectID),
-            museum: 'The Met',
-            srcLang: 'en'
+        const all = await getMetIds(dept, q);
+        const ids = shuffle(all.slice()).slice(0, 14);
+        // Resolve as soon as we have enough valid objects instead of waiting
+        // for the slowest of the parallel requests.
+        await new Promise((resolve) => {
+          let pending = ids.length;
+          if(!pending) return resolve();
+          ids.forEach(id => {
+            fetchWithTimeout('https://collectionapi.metmuseum.org/public/collection/v1/objects/' + id, {}, 5000)
+              .then(res => res.ok ? res.json() : null)
+              .catch(() => null)
+              .then(o => {
+                if(o && o.isPublicDomain && o.classification && /paint|print/i.test(o.classification)
+                   && (o.primaryImage || o.primaryImageSmall) && results.length < count){
+                  const full = o.primaryImage, small = o.primaryImageSmall;
+                  results.push({
+                    id: o.objectID,
+                    title: o.title || null,
+                    artist: o.artistDisplayName || null,
+                    date: o.objectDate || '',
+                    medium: o.medium || null,
+                    img: full || small,
+                    imgPreview: small || full,
+                    source: o.objectURL || ('https://www.metmuseum.org/art/collection/search/' + o.objectID),
+                    museum: 'The Met',
+                    srcLang: 'en'
+                  });
+                }
+                pending--;
+                if(results.length >= count || pending <= 0) resolve();
+              });
           });
-        }
+        });
       }catch(e){
         console.error('Met fetch error', e);
       }
@@ -1326,7 +1346,7 @@
   async function fetchCleveland(count){
     const results = [];
     let attempts = 0;
-    while(results.length < count && attempts < 8){
+    while(results.length < count && attempts < 4){
       attempts++;
       const skip = Math.floor(Math.random() * 30000);
       const wantsPrint = Math.random() < 0.5;
@@ -1334,7 +1354,7 @@
       const url = 'https://openaccess-api.clevelandart.org/api/artworks/'
         + '?limit=20&cc0=1&has_image=1&type=' + encodeURIComponent(type) + '&skip=' + skip;
       try{
-        const res = await fetchWithTimeout(url, {}, 7000);
+        const res = await fetchWithTimeout(url, {}, 5000);
         if(!res.ok) continue;
         const data = await res.json();
         const items = shuffle((data.data || [])
@@ -1367,14 +1387,14 @@
   async function fetchVA(count){
     const results = [];
     let attempts = 0;
-    while(results.length < count && attempts < 8){
+    while(results.length < count && attempts < 4){
       attempts++;
       const page = Math.floor(Math.random() * 50) + 1;
       const objType = Math.random() < 0.5 ? 'print' : 'painting';
       const url = 'https://api.vam.ac.uk/v2/objects/search'
         + '?q_object_type=' + objType + '&images_exist=1&page_size=20&page=' + page;
       try{
-        const res = await fetchWithTimeout(url, {}, 7000);
+        const res = await fetchWithTimeout(url, {}, 5000);
         if(!res.ok) continue;
         const data = await res.json();
         const items = shuffle((data.records || []).filter(r => r._primaryImageId));
@@ -1408,7 +1428,7 @@
   async function fetchHarvard(count){
     const results = [];
     let attempts = 0;
-    while(results.length < count && attempts < 8){
+    while(results.length < count && attempts < 4){
       attempts++;
       const page = Math.floor(Math.random() * 300) + 1;
       const classification = Math.random() < 0.5 ? 'Prints' : 'Paintings';
@@ -1417,7 +1437,7 @@
         + '&size=20&page=' + page
         + '&hasimage=1&classification=' + encodeURIComponent(classification);
       try{
-        const res = await fetchWithTimeout(url, {}, 7000);
+        const res = await fetchWithTimeout(url, {}, 5000);
         if(!res.ok) continue;
         const data = await res.json();
         const items = shuffle((data.records || []).filter(r => r.primaryimageurl));
@@ -1581,40 +1601,45 @@
     });
   }
 
-  async function fetchBatch(count){
+  // Streams results: onChunk(items) is called as soon as each source answers,
+  // so the first artworks appear without waiting for the slowest museum.
+  async function fetchBatch(count, onChunk){
     const activeKeys = [];
     if(sources.met) activeKeys.push('met');
     if(sources.cleveland) activeKeys.push('cleveland');
     if(sources.va) activeKeys.push('va');
     if(sources.harvard) activeKeys.push('harvard');
-    if(activeKeys.length === 0) return [];
+    if(activeKeys.length === 0) return 0;
 
-    let recommended = [];
+    let total = 0;
+    const emit = (items) => {
+      if(!items.length) return;
+      total += items.length;
+      if(onChunk) onChunk(items);
+    };
+
+    let favorite = null;
     if(recommendationsEnabled){
-      const favorite = pickFavoriteArtist(activeKeys);
-      if(favorite){
-        const fetcher = BY_ARTIST_FETCHERS[favorite.museum];
-        if(fetcher){
-          try{
-            const picks = await raceWithFallback(fetcher(favorite.artist, Math.min(2, count)), 7000, []);
-            recommended = dedupe(picks).map(it => Object.assign({}, it, { recommendedFor: favorite.artist }));
-          }catch(e){ /* ignore, fall back to regular discovery */ }
-        }
-      }
+      favorite = pickFavoriteArtist(activeKeys);
     }
+    const recPromise = (favorite && BY_ARTIST_FETCHERS[favorite.museum])
+      ? raceWithFallback(BY_ARTIST_FETCHERS[favorite.museum](favorite.artist, Math.min(2, count)), 7000, [])
+          .then(picks => dedupe(picks).map(it => Object.assign({}, it, { recommendedFor: favorite.artist })))
+          .catch(() => [])
+      : Promise.resolve([]);
 
-    const remaining = Math.max(count - recommended.length, 1);
+    const remaining = Math.max(count - (favorite ? 2 : 0), 1);
     const weights = activeKeys.map(k => 1 + (recommendationsEnabled ? museumLikeWeight(k) : 0));
     const totalW = weights.reduce((a, b) => a + b, 0);
     const counts = activeKeys.map((k, i) => Math.max(1, Math.round(remaining * weights[i] / totalW)));
-
     const fetcherMap = { met: fetchMet, cleveland: fetchCleveland, va: fetchVA, harvard: fetchHarvard };
-    const settled = await Promise.all(
-      activeKeys.map((k, i) => raceWithFallback(fetcherMap[k](counts[i]), 9000, []))
-    );
-    const discovered = dedupe(settled.flat());
 
-    return shuffle([...recommended, ...discovered]).slice(0, count);
+    const jobs = activeKeys.map((k, i) =>
+      raceWithFallback(fetcherMap[k](counts[i]), 8000, []).then(items => emit(shuffle(dedupe(items))))
+    );
+    jobs.push(recPromise.then(emit));
+    await Promise.all(jobs);
+    return total;
   }
 
   async function applySlideLanguage(node, animate){
@@ -1739,13 +1764,9 @@
     img.src = previewUrl;
     frame.style.setProperty('background-image', 'url(' + previewUrl + ')');
 
-    if(item.img && item.img !== previewUrl){
-      const fullImg = new Image();
-      fullImg.onload = () => {
-        img.src = item.img;
-      };
-      fullImg.src = item.img;
-    }
+    img.decoding = 'async';
+    if(index === 0) img.setAttribute('fetchpriority','high');
+    node.dataset.fullUpgraded = '0';
 
     node.dataset.id = item.id;
     node.dataset.title = item.title || '';
@@ -2030,6 +2051,7 @@
     if(pruneNeeded) armPruneIdleCheck();
   }, { passive: true });
 
+  let feedEpoch = 0;
   let lastLoadAttempt = 0;
   let consecutiveFailures = 0;
 
@@ -2047,23 +2069,33 @@
     loading = true;
     if(loaderNode) loaderNode.classList.add('active');
     setLoaderText('loadingNext');
-    const items = await fetchBatch(count);
     let built = 0;
-    items.forEach((item, i) => {
-      try{
-        const node = buildSlide(item, totalBuiltCount);
-        if(loaderNode && loaderNode.parentNode === feed){
-          feed.insertBefore(node, loaderNode);
-        }else{
-          feed.appendChild(node);
+    const epoch = feedEpoch;
+    try{
+      await fetchBatch(count, (items) => {
+        if(epoch !== feedEpoch) return;
+        items.forEach((item) => {
+          try{
+            const node = buildSlide(item, totalBuiltCount);
+            if(loaderNode && loaderNode.parentNode === feed){
+              feed.insertBefore(node, loaderNode);
+            }else{
+              feed.appendChild(node);
+            }
+            attachObserver(node);
+            totalBuiltCount++;
+            built++;
+          }catch(e){
+            console.error('Skipping one artwork — failed to build slide:', e, item);
+          }
+        });
+        if(built > 0 && opts.onFirstChunk){
+          const cb = opts.onFirstChunk; opts.onFirstChunk = null; cb();
         }
-        attachObserver(node);
-        totalBuiltCount++;
-        built++;
-      }catch(e){
-        console.error('Skipping one artwork — failed to build slide:', e, item);
-      }
-    });
+      });
+    }catch(e){
+      console.error('fetchBatch failed:', e);
+    }
     schedulePrune();
     loading = false;
     if(built === 0){
@@ -2210,7 +2242,7 @@
     attachObserver(loaderNode);
     let first = 0;
     try{
-      first = await loadMore(6);
+      first = await loadMore(6, { onFirstChunk: forceHideBoot });
     }catch(e){
       console.error('Initial load failed unexpectedly:', e);
     }finally{
@@ -2363,12 +2395,22 @@ let isMusicEnabled = false;
     if(imgLoader) imgLoader.classList.remove('hidden');
     if(img) img.src = previewUrl;
     if(frame) frame.style.setProperty('background-image', 'url(' + previewUrl + ')');
-    if(fullSrc && fullSrc !== previewUrl){
-      const fullImg = new Image();
-      fullImg.onload = () => { if(img) img.src = fullSrc; };
-      fullImg.src = fullSrc;
-    }
+    node.dataset.fullUpgraded = '0';
     node.dataset.mediaUnloaded = '0';
+  }
+
+  // Full-resolution image is fetched only for the slide actually on screen,
+  // so off-screen slides don't compete for bandwidth with the one being viewed.
+  function upgradeSlideFull(node){
+    if(node.dataset.fullUpgraded === '1') return;
+    const fullSrc = node.dataset.fullSrc, previewUrl = node.dataset.previewSrc;
+    node.dataset.fullUpgraded = '1';
+    if(!fullSrc || fullSrc === previewUrl) return;
+    const img = node.querySelector('.art-img');
+    const fullImg = new Image();
+    fullImg.decoding = 'async';
+    fullImg.onload = () => { if(img && node.dataset.mediaUnloaded !== '1') img.src = fullSrc; };
+    fullImg.src = fullSrc;
   }
 
   function sweepMemoryWindow(activeIdx, slideNodes){
@@ -2407,6 +2449,7 @@ let isMusicEnabled = false;
           const activeIdx = slideNodes.indexOf(entry.target);
           if(activeIdx !== -1){
             sweepMemoryWindow(activeIdx, slideNodes);
+            upgradeSlideFull(entry.target);
             // Ads paused for now — see head comment to re-enable.
             // if(entry.target !== lastAdCountedSlide){
             //   lastAdCountedSlide = entry.target;
@@ -2545,7 +2588,8 @@ let isMusicEnabled = false;
     exploreHeading.classList.add('show');
     searchGrid.innerHTML = '';
     searchStatus.innerHTML = '<div class="spinner" style="margin:0 auto 12px;"></div><div>' + t('exploreLoading') + '</div>';
-    const items = await fetchBatch(24);
+    const items = [];
+    await fetchBatch(24, (chunk) => items.push(...chunk));
     exploreLoading = false;
     if(searchInput.value.trim()) return; // user started typing while this was loading
     if(!items.length){
@@ -2754,6 +2798,7 @@ let isMusicEnabled = false;
 
   document.getElementById('artist-banner-btn').addEventListener('click', exitArtistMode);
 
+  warmMetCache();
   boot_init();
 })();
 </script>
